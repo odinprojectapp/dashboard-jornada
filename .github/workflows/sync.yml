@@ -1,0 +1,32 @@
+name: Sync SharePoint Dashboard
+on:
+  schedule:
+    - cron: '0 * * * *'
+  workflow_dispatch:
+jobs:
+  sync:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          token: ${{ secrets.GH_TOKEN }}
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - run: pip install office365-rest-python-client openpyxl python-dotenv requests
+      - name: Crear .env
+        run: |
+          mkdir -p scripts
+          echo "SP_URL=${{ secrets.SP_URL }}" > scripts/.env
+          echo "SP_CLIENT_ID=${{ secrets.SP_CLIENT_ID }}" >> scripts/.env
+          echo "SP_CLIENT_SECRET=${{ secrets.SP_CLIENT_SECRET }}" >> scripts/.env
+          echo "SP_TENANT_ID=${{ secrets.SP_TENANT_ID }}" >> scripts/.env
+          echo "GITHUB_TOKEN=${{ secrets.GH_TOKEN }}" >> scripts/.env
+          echo "GITHUB_USER=odinprojectapp" >> scripts/.env
+          echo "GITHUB_REPO=dashboard-jornada" >> scripts/.env
+      - run: python scripts/sync_sharepoint.py
+      - name: Push si hay cambios
+        run: |
+          git config user.name "Actions Bot"
+          git config user.email "bot@github.com"
+          git diff --quiet data.js || (git add data.js && git commit -m "Auto-sync $(date +%F)" && git push)
