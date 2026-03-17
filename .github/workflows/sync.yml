@@ -23,122 +23,108 @@ jobs:
           python-version: '3.11'
 
       - name: Instalar dependencias
-        run: pip install office365-rest-python-client openpyxl requests python-dotenv
+        run: pip install requests openpyxl msal
 
       - name: Sincronizar datos desde SharePoint
         env:
           SP_URL: ${{ secrets.SP_URL }}
           SP_CLIENT_ID: ${{ secrets.SP_CLIENT_ID }}
           SP_CLIENT_SECRET: ${{ secrets.SP_CLIENT_SECRET }}
+          SP_TENANT_ID: ${{ secrets.SP_TENANT_ID }}
         run: |
           python3 - <<'PYEOF'
-          import os, json, re, sys
+          import os, json, re, io, tempfile
           from datetime import datetime
           from pathlib import Path
+          import requests
+          import msal
+          import openpyxl
 
-          SP_URL = os.environ.get("SP_URL", "")
-          SP_CLIENT_ID = os.environ.get("SP_CLIENT_ID", "")
-          SP_CLIENT_SECRET = os.environ.get("SP_CLIENT_SECRET", "")
-          SP_FOLDER = "/sites/BD_DashboardGestion/Documentos compartidos/Safety/Jornada laboral"
-          LIMITE = 36000
+          TENANT_ID     = os.environ["SP_TENANT_ID"]
+          CLIENT_ID     = os.environ["SP_CLIENT_ID"]
+          CLIENT_SECRET = os.environ["SP_CLIENT_SECRET"]
+          SP_HOSTNAME   = "grcsincelejo.sharepoint.com"
+          SITE_PATH     = "/sites/BD_DashboardGestion"
+          FOLDER_PATH   = "Documentos compartidos/Safety/Jornada laboral"
+          LIMITE        = 36000
 
-          print(f"SP_URL: {SP_URL[:40]}...")
-          print(f"SP_CLIENT_ID: {SP_CLIENT_ID[:8]}...")
-          print(f"SP_CLIENT_SECRET: {'*' * 8 if SP_CLIENT_SECRET else 'VACIO'}")
+          # Obtener token via MSAL (client credentials)
+          authority = f"https://login.microsoftonline.com/{TENANT_ID}"
+          app = msal.ConfidentialClientApplication(CLIENT_ID, authority=authority, client_credential=CLIENT_SECRET)
+          scope = ["https://graph.microsoft.com/.default"]
+          result = app.acquire_token_for_client(scopes=scope)
+          if "access_token" not in result:
+              print("ERROR token:", result.get("error_description", result))
+              exit(1)
+          token = result["access_token"]
+          print("Token obtenido OK")
 
-          if not SP_CLIENT_ID or not SP_CLIENT_SECRET:
-              print("ERROR: Faltan credenciales SP_CLIENT_ID o SP_CLIENT_SECRET en los Secrets de GitHub")
-              sys.exit(1)
+          base = "https://graph.microsoft.com/v1.0"
+          hdrs = {"Authorization": "Bearer " + token}
 
-          try:
-              from office365.runtime.auth.client_credential import ClientCredential
-              from office365.sharepoint.client_context import ClientContext
-              import openpyxl
-          except ImportError as e:
-              print(f"ERROR importando: {e}")
-              sys.exit(1)
+          # Obtener site ID
+          site_r = requests.get(f"{base}/sites/{SP_HOSTNAME}:{SITE_PATH}", headers=hdrs)
+          site_r.raise_for_status()
+          site_id = site_r.json()["id"]
+          print("Site ID:", site_id)
 
-          print("Conectando a SharePoint...")
-          try:
-              creds = ClientCredential(SP_CLIENT_ID, SP_CLIENT_SECRET)
-              ctx = ClientContext(SP_URL).with_credentials(creds)
-              ctx.load(ctx.web)
-              ctx.execute_query()
-              print(f"Conectado: {ctx.web.url}")
-          except Exception as e:
-              print(f"ERROR conexion SharePoint: {type(e).__name__}: {e}")
-              sys.exit(1)
+          # Listar drives y encontrar el principal
+          drives_r = requests.get(f"{base}/sites/{site_id}/drives", headers=hdrs)
+          drives_r.raise_for_status()
+          drive = drives_r.json()["value"][0]
+          drive_id = drive["id"]
+          print("Drive:", drive["name"])
 
-          print("Listando archivos...")
-          try:
-              folder = ctx.web.get_folder_by_server_relative_url(SP_FOLDER)
-              files = folder.files
-              ctx.load(files)
-              ctx.execute_query()
-              excels = [f for f in files if f.name.endswith((".xlsx", ".xls"))]
-              print(f"Archivos Excel encontrados: {len(excels)}")
-              for f in excels:
-                  print(f"  - {f.name}")
-          except Exception as e:
-              print(f"ERROR listando archivos: {type(e).__name__}: {e}")
-              sys.exit(1)
-
-          if not excels:
-              print("Sin archivos Excel. No se actualiza data.js")
-              sys.exit(0)
+          # Listar archivos en la carpeta
+          folder_enc = FOLDER_PATH.replace(" ", "%20").replace("/", "/")
+          items_r = requests.get(f"{base}/drives/{drive_id}/root:/{folder_enc}:/children", headers=hdrs)
+          items_r.raise_for_status()
+          items = items_r.json().get("value", [])
+          excels = [i for i in items if i["name"].endswith((".xlsx", ".xls"))]
+          print(f"Archivos Excel: {len(excels)}")
 
           def hora_str(v):
               if v is None: return None
-              if hasattr(v, 'hour'): return f"{v.hour:02d}:{v.minute:02d}"
-              if hasattr(v, 'seconds'): t=int(v.total_seconds()); return f"{t//3600:02d}:{(t%3600)//60:02d}"
-              m = re.search(r'(\d{1,2}):(\d{2})', str(v))
+              if hasattr(v, "hour"): return f"{v.hour:02d}:{v.minute:02d}"
+              if hasattr(v, "seconds"): t=int(v.total_seconds()); return f"{t//3600:02d}:{(t%3600)//60:02d}"
+              m = re.search(r"(\d{1,2}):(\d{2})", str(v))
               return f"{int(m.group(1)):02d}:{int(m.group(2)):02d}" if m else None
 
           def calc_segs(e, s):
               if not e or not s: return None
-              eh,em=map(int,e.split(':')); sh,sm=map(int,s.split(':'))
-              d=(sh*3600+sm*60)-(eh*3600+em*60)
-              return d+86400 if d<0 else d
+              eh,em=map(int,e.split(":")); sh,sm=map(int,s.split(":"))
+              d=(sh*3600+sm*60)-(eh*3600+em*60); return d+86400 if d<0 else d
 
           todos, seen = [], set()
-          for sp_file in excels:
-              print(f"Procesando: {sp_file.name}")
-              p = Path(f"/tmp/{sp_file.name}")
-              try:
-                  with open(p, "wb") as f: sp_file.download(f); ctx.execute_query()
-                  wb = openpyxl.load_workbook(p, data_only=True)
-                  ws = wb.active
-                  hdr = {str(c.value).strip(): i for i,c in enumerate(next(ws.iter_rows(min_row=1,max_row=1)),1) if c.value}
-                  print(f"  Columnas: {list(hdr.keys())[:8]}")
-                  ok=0
-                  for row in ws.iter_rows(min_row=2, values_only=True):
-                      def g(col): idx=hdr.get(col); return row[idx-1] if idx and idx<=len(row) else None
-                      ent=hora_str(g("Entr\u00f3")); sal=hora_str(g("Sali\u00f3_3"))
-                      if not ent or not sal: continue
-                      sg=calc_segs(ent,sal)
-                      if not sg or sg<=0: continue
-                      fr=g("Fecha")
-                      fecha=fr.strftime("%Y-%m-%d") if isinstance(fr,datetime) else (str(fr)[:10] if fr else "")
-                      if not fecha: continue
-                      nom=f"{str(g('Apellidos') or '').strip()} {str(g('Nombres') or '').strip()}".title().strip()
-                      if not nom: continue
-                      key=f"{str(g('Identificador') or '')}_{fecha}"
-                      if key in seen: continue
-                      seen.add(key)
-                      anio=fecha[:4]; mn=int(fecha[5:7])
-                      ms=["","enero","febrero","marzo","abril","mayo","junio","julio","agosto","septiembre","octubre","noviembre","diciembre"]
-                      todos.append({"nombre":nom,"cc":str(g("Identificador") or "").strip(),"cargo":str(g("Cargo") or "").strip().title(),"agencia":str(g("Grupo") or "").strip().upper(),"fecha":fecha,"anio":anio,"mes":f"{ms[mn]} {anio}","entrada":ent,"salida":sal,"segs":sg})
-                      ok+=1
-                  print(f"  Validos: {ok}")
-                  p.unlink()
-              except Exception as e:
-                  print(f"  ERROR procesando {sp_file.name}: {type(e).__name__}: {e}")
-                  continue
+          for item in excels:
+              print("Procesando:", item["name"])
+              dl = requests.get(item["@microsoft.graph.downloadUrl"])
+              dl.raise_for_status()
+              wb = openpyxl.load_workbook(io.BytesIO(dl.content), data_only=True)
+              ws = wb.active
+              hdr = {str(c.value).strip(): i for i,c in enumerate(next(ws.iter_rows(min_row=1,max_row=1)),1) if c.value}
+              ok = 0
+              for row in ws.iter_rows(min_row=2, values_only=True):
+                  def g(col): idx=hdr.get(col); return row[idx-1] if idx and idx<=len(row) else None
+                  ent=hora_str(g("Entr\u00f3")); sal=hora_str(g("Sali\u00f3_3"))
+                  if not ent or not sal: continue
+                  sg=calc_segs(ent,sal)
+                  if not sg or sg<=0: continue
+                  fr=g("Fecha")
+                  fecha=fr.strftime("%Y-%m-%d") if isinstance(fr,datetime) else (str(fr)[:10] if fr else "")
+                  if not fecha: continue
+                  nom=f"{str(g('Apellidos') or '').strip()} {str(g('Nombres') or '').strip()}".title().strip()
+                  if not nom: continue
+                  key=f"{str(g('Identificador') or '')}_{fecha}"
+                  if key in seen: continue
+                  seen.add(key)
+                  anio=fecha[:4]; mn=int(fecha[5:7])
+                  ms=["","enero","febrero","marzo","abril","mayo","junio","julio","agosto","septiembre","octubre","noviembre","diciembre"]
+                  todos.append({"nombre":nom,"cc":str(g("Identificador") or "").strip(),"cargo":str(g("Cargo") or "").strip().title(),"agencia":str(g("Grupo") or "").strip().upper(),"fecha":fecha,"anio":anio,"mes":f"{ms[mn]} {anio}","entrada":ent,"salida":sal,"segs":sg})
+                  ok+=1
+              print(f"  Validos: {ok}")
 
-          if not todos:
-              print("Sin registros validos. No se actualiza data.js")
-              sys.exit(0)
-
+          if not todos: print("Sin registros validos — no se actualiza data.js"); exit(0)
           n=len(todos); devs=[r for r in todos if r["segs"]>=LIMITE]
           avg=round(sum(r["segs"] for r in todos)/n); h,m,s=avg//3600,(avg%3600)//60,avg%60
           prom=f"{h:02d}:{m:02d}:{s:02d}"; ahora=datetime.now().strftime("%d/%m/%Y %H:%M")
@@ -160,9 +146,9 @@ jobs:
               if r["fecha"] not in fm: fm[r["fecha"]]={"s":0,"c":0}
               fm[r["fecha"]]["s"]+=r["segs"]; fm[r["fecha"]]["c"]+=1
           tend=[{"fecha":k,"promedio_segs":round(v["s"]/v["c"]),"total":v["c"]} for k,v in sorted(fm.items())]
-          js=f'// Auto {ahora}\nconst ULTIMA_ACTUALIZACION="{ahora}";\nconst LIMITE_SIC_HORAS=10;\nconst RESUMEN={json.dumps({"total":n,"desviados":len(devs),"pct_desviacion":round(len(devs)/n*100,1),"promedio_global":prom,"rangos":rangos,"por_cargo":por_cargo,"por_agencia":por_agencia,"tendencia":tend},ensure_ascii=False)};\nconst REGISTROS={json.dumps(todos,ensure_ascii=False,indent=2)};'
-          Path("data.js").write_text(js,encoding="utf-8")
-          print(f"data.js OK: {n} registros | {len(devs)} desviaciones | Promedio: {prom}")
+          js=f'// Auto-generado {ahora}\nconst ULTIMA_ACTUALIZACION="{ahora}";\nconst LIMITE_SIC_HORAS=10;\nconst RESUMEN={json.dumps({"total":n,"desviados":len(devs),"pct_desviacion":round(len(devs)/n*100,1),"promedio_global":prom,"rangos":rangos,"por_cargo":por_cargo,"por_agencia":por_agencia,"tendencia":tend},ensure_ascii=False)};\nconst REGISTROS={json.dumps(todos,ensure_ascii=False,indent=2)};'
+          Path("data.js").write_text(js, encoding="utf-8")
+          print(f"data.js OK — {n} registros | {len(devs)} desviaciones | Promedio: {prom}")
           PYEOF
 
       - name: Commit si hay cambios
