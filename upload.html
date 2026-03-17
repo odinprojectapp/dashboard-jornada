@@ -81,8 +81,17 @@ body{background:var(--bg);color:var(--gray);font-family:'Segoe UI',sans-serif;fo
   <hr class="divider">
   <div style="font-size:10px;color:#555;text-align:center;line-height:1.7">El archivo se sube con tu cuenta corporativa. El dashboard se actualiza en el proximo ciclo.</div>
 </div></div>
-<script src="https://cdn.jsdelivr.net/npm/@azure/msal-browser@3.26.1/lib/msal-browser.min.js"></script>
 <script>
+// Cargar MSAL y luego inicializar
+(function() {
+  var s = document.createElement('script');
+  s.src = 'https://cdn.jsdelivr.net/npm/@azure/msal-browser@3.26.1/lib/msal-browser.min.js';
+  s.onload = function() { init_app(); };
+  s.onerror = function() { document.getElementById('alertErr').textContent = 'Error cargando MSAL. Verifica tu conexion.'; document.getElementById('alertErr').style.display='block'; };
+  document.head.appendChild(s);
+})();
+
+function init_app() {
 var TENANT='bc62c75e-1b12-4df8-8cc8-c0a5cb0ca607';
 var CLIENT='2f125b19-5791-4834-9641-61a946a568ff';
 var SP_URL='https://grcsincelejo.sharepoint.com/sites/BD_DashboardGestion';
@@ -173,6 +182,7 @@ window.addEventListener('load',async function(){
     if(accounts.length>0){await msal_instance.acquireTokenSilent({scopes:SCOPES,account:accounts[0]});set_user(accounts[0]);}
   }catch(e){console.log('MSAL:',e.message||e);}
 });
+} // fin init_app
 </script>
 </body>
 </html>
