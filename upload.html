@@ -3,39 +3,30 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>Cargar Registros — GRC Jornada Laboral</title>
-<script src="https://cdnjs.cloudflare.com/ajax/libs/microsoft-authentication-library/4.0.3/msal-browser.min.js"></script>
+<title>Cargar Registros GRC</title>
 <style>
-:root{--gold:#d1a33c;--gray:#c7c7c7;--bg:#0a0a0a;--bg2:#111;--bg3:#1a1a1a;--border:#2a2a2a;--red:#cc2200;--green:#27ae60;--white:#f0f0f0}
+:root{--gold:#d1a33c;--gray:#c7c7c7;--bg:#0a0a0a;--bg2:#111;--bg3:#1a1a1a;--border:#2a2a2a;--red:#cc2200;--white:#f0f0f0}
 *{box-sizing:border-box;margin:0;padding:0}
 body{background:var(--bg);color:var(--gray);font-family:'Segoe UI',sans-serif;font-size:13px;min-height:100vh;display:flex;flex-direction:column}
 .header{background:var(--bg2);border-bottom:.5px solid var(--border);padding:.75rem 1.5rem;display:flex;align-items:center;justify-content:space-between}
-.header-left{display:flex;align-items:center;gap:10px}
 .logo{width:32px;height:32px;border-radius:7px;background:var(--gold);display:flex;align-items:center;justify-content:center;flex-shrink:0}
 .header-title{font-size:15px;font-weight:500;color:var(--white)}
 .header-sub{font-size:11px;color:#888;margin-top:1px}
-.back-btn{font-size:11px;color:var(--gold);border:.5px solid var(--gold);background:transparent;padding:4px 12px;border-radius:5px;cursor:pointer;text-decoration:none}
-.back-btn:hover{background:rgba(209,163,60,0.1)}
+.back-btn{font-size:11px;color:var(--gold);border:.5px solid var(--gold);background:transparent;padding:4px 12px;border-radius:5px;text-decoration:none}
 .main{flex:1;display:flex;align-items:center;justify-content:center;padding:2rem}
 .card{background:var(--bg2);border:.5px solid var(--border);border-radius:12px;padding:2rem;max-width:520px;width:100%}
-.card-title{font-size:14px;font-weight:500;color:var(--white);margin-bottom:.4rem}
-.card-sub{font-size:11px;color:#888;margin-bottom:1.5rem;line-height:1.6}
 .btn-primary{width:100%;background:var(--gold);color:#000;border:none;padding:.7rem;border-radius:7px;font-size:13px;font-weight:500;cursor:pointer;margin-bottom:1rem}
-.btn-primary:hover{background:#b8902e}
 .btn-primary:disabled{background:#333;color:#666;cursor:not-allowed}
 .user-info{display:flex;align-items:center;gap:10px;background:var(--bg3);border:.5px solid var(--border);border-radius:8px;padding:.6rem .85rem;margin-bottom:1rem}
 .user-avatar{width:32px;height:32px;border-radius:50%;background:var(--gold);display:flex;align-items:center;justify-content:center;font-size:12px;font-weight:500;color:#000;flex-shrink:0}
 .user-name{font-size:12px;color:var(--white);font-weight:500}
 .user-email{font-size:10px;color:#888}
 .btn-logout{background:transparent;border:.5px solid var(--border);color:#888;font-size:10px;padding:3px 8px;border-radius:4px;cursor:pointer;margin-left:auto}
-.btn-logout:hover{border-color:var(--red);color:var(--red)}
-.drop-zone{border:1.5px dashed var(--border);border-radius:8px;padding:2rem;text-align:center;cursor:pointer;transition:all .2s;margin-bottom:1rem;position:relative}
-.drop-zone:hover,.drop-zone.drag-over{border-color:var(--gold);background:rgba(209,163,60,0.05)}
-.drop-zone input{position:absolute;inset:0;opacity:0;cursor:pointer;width:100%;height:100%}
-.drop-icon{width:40px;height:40px;border-radius:8px;background:rgba(209,163,60,0.15);display:flex;align-items:center;justify-content:center;margin:0 auto 10px}
+.drop-zone{border:1.5px dashed var(--border);border-radius:8px;padding:2rem;text-align:center;margin-bottom:1rem;position:relative;overflow:hidden;cursor:pointer}
+.drop-zone.drag-over{border-color:var(--gold);background:rgba(209,163,60,0.05)}
+.drop-zone input[type=file]{position:absolute;inset:0;opacity:0;cursor:pointer;width:100%;height:100%}
 .drop-title{font-size:13px;color:var(--white);margin-bottom:4px}
 .drop-sub{font-size:11px;color:#888}
-.file-selected{background:rgba(209,163,60,0.08);border-color:var(--gold)}
 .file-name{font-size:12px;color:var(--gold);font-weight:500;margin-top:6px}
 .progress-wrap{margin-bottom:1rem;display:none}
 .progress-label{display:flex;justify-content:space-between;font-size:11px;color:#888;margin-bottom:4px}
@@ -51,45 +42,137 @@ body{background:var(--bg);color:var(--gray);font-family:'Segoe UI',sans-serif;fo
 </style>
 </head>
 <body>
-<div class="header"><div class="header-left"><div class="logo"><svg width="16" height="16" viewBox="0 0 16 16" fill="none"><path d="M2 13V6l6-4 6 4v7" stroke="#000" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round"/><rect x="5" y="8" width="6" height="5" rx="1" stroke="#000" stroke-width="1.2"/></svg></div><div><div class="header-title">Cargar registros biométricos</div><div class="header-sub">GRC Sincelejo · SharePoint → Safety/Jornada laboral</div></div></div><a href="index.html" class="back-btn">← Dashboard</a></div>
-<div class="main"><div class="card">
-<div class="card-title">Importar archivo de jornada laboral</div>
-<div class="card-sub">Sube el Excel biométrico directamente a SharePoint. El dashboard se actualizará automáticamente en la próxima ejecución del workflow (6am, 2pm u 8pm).</div>
-<div class="info-box"><b>Destino:</b> Safety › Jornada laboral<br><b>Formato:</b> Excel (.xlsx) — mismo formato del sistema biométrico<br><b>Acción:</b> Se sube a SharePoint y el workflow procesa los datos automáticamente</div>
-<div id="alertOk" class="alert alert-ok"></div>
-<div id="alertErr" class="alert alert-err"></div>
-<div id="alertInfo" class="alert alert-info"></div>
-<div id="viewLogin"><button class="btn-primary" onclick="login()">Iniciar sesión con Microsoft 365</button><div style="font-size:10px;color:#555;text-align:center">Usa tu cuenta corporativa @grcsincelejo.onmicrosoft.com</div></div>
-<div id="viewUpload" style="display:none">
-<div class="user-info" id="userInfo"><div class="user-avatar" id="userInitials">?</div><div><div class="user-name" id="userName">—</div><div class="user-email" id="userEmail">—</div></div><button class="btn-logout" onclick="logout()">Cerrar sesión</button></div>
-<div class="drop-zone" id="dropZone"><input type="file" id="fileInput" accept=".xlsx,.xls" onchange="onFileSelected(this)"><div class="drop-icon"><svg width="20" height="20" viewBox="0 0 20 20" fill="none"><path d="M10 13V4M10 4L7 7M10 4l3 3" stroke="#d1a33c" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/><path d="M3 14v1a2 2 0 002 2h10a2 2 0 002-2v-1" stroke="#d1a33c" stroke-width="1.5" stroke-linecap="round"/></svg></div><div class="drop-title">Arrastra el archivo aquí</div><div class="drop-sub">o haz clic para seleccionar · .xlsx / .xls</div><div class="file-name" id="fileName"></div></div>
-<div class="progress-wrap" id="progressWrap"><div class="progress-label"><span id="progressLabel">Subiendo...</span><span id="progressPct">0%</span></div><div class="progress-bar"><div class="progress-fill" id="progressFill" style="width:0%"></div></div></div>
-<button class="btn-primary" id="btnUpload" onclick="upload()" disabled>Subir a SharePoint</button>
+<div class="header">
+  <div style="display:flex;align-items:center;gap:10px">
+    <div class="logo"><svg width="16" height="16" viewBox="0 0 16 16" fill="none"><path d="M2 13V6l6-4 6 4v7" stroke="#000" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round"/><rect x="5" y="8" width="6" height="5" rx="1" stroke="#000" stroke-width="1.2"/></svg></div>
+    <div><div class="header-title">Cargar registros biometricos</div><div class="header-sub">GRC Sincelejo · SharePoint → Safety/Jornada laboral</div></div>
+  </div>
+  <a href="index.html" class="back-btn">← Dashboard</a>
 </div>
-<hr class="divider">
-<div style="font-size:10px;color:#555;text-align:center;line-height:1.7">El archivo se sube a SharePoint con tu cuenta corporativa.<br>El dashboard se actualiza automáticamente en el próximo ciclo.</div>
+<div class="main"><div class="card">
+  <div style="font-size:14px;font-weight:500;color:var(--white);margin-bottom:.4rem">Importar archivo de jornada laboral</div>
+  <div style="font-size:11px;color:#888;margin-bottom:1.5rem;line-height:1.6">Sube el Excel biometrico a SharePoint. El dashboard se actualiza automaticamente en el proximo ciclo (6am, 2pm u 8pm).</div>
+  <div class="info-box"><b>Destino:</b> Safety / Jornada laboral<br><b>Formato:</b> Excel .xlsx<br><b>Accion:</b> El workflow procesa los datos automaticamente</div>
+  <div id="alertOk" class="alert alert-ok"></div>
+  <div id="alertErr" class="alert alert-err"></div>
+  <div id="alertInfo" class="alert alert-info"></div>
+  <div id="viewLogin">
+    <button class="btn-primary" id="btnLogin">Iniciar sesion con Microsoft 365</button>
+    <div style="font-size:10px;color:#555;text-align:center">Cuenta corporativa @grcsincelejo.onmicrosoft.com</div>
+  </div>
+  <div id="viewUpload" style="display:none">
+    <div class="user-info">
+      <div class="user-avatar" id="userInitials">?</div>
+      <div><div class="user-name" id="userName">-</div><div class="user-email" id="userEmail">-</div></div>
+      <button class="btn-logout" id="btnLogout">Salir</button>
+    </div>
+    <div class="drop-zone" id="dropZone">
+      <input type="file" id="fileInput" accept=".xlsx,.xls">
+      <div class="drop-title">Arrastra el archivo aqui</div>
+      <div class="drop-sub">o haz clic para seleccionar · .xlsx / .xls</div>
+      <div class="file-name" id="fileName"></div>
+    </div>
+    <div class="progress-wrap" id="progressWrap">
+      <div class="progress-label"><span id="progressLabel">Subiendo...</span><span id="progressPct">0%</span></div>
+      <div class="progress-bar"><div class="progress-fill" id="progressFill" style="width:0%"></div></div>
+    </div>
+    <button class="btn-primary" id="btnUpload" disabled>Subir a SharePoint</button>
+  </div>
+  <hr class="divider">
+  <div style="font-size:10px;color:#555;text-align:center;line-height:1.7">El archivo se sube con tu cuenta corporativa. El dashboard se actualiza en el proximo ciclo.</div>
 </div></div>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/microsoft-authentication-library/4.0.3/msal-browser.min.js"></script>
 <script>
-const TENANT_ID='bc62c75e-1b12-4df8-8cc8-c0a5cb0ca607';
-const CLIENT_ID='2f125b19-5791-4834-9641-61a946a568ff';
-const SP_FOLDER='/sites/BD_DashboardGestion/Documentos compartidos/Safety/Jornada laboral';
-const SCOPES=['https://grcsincelejo.sharepoint.com/AllSites.Write'];
-const msalConfig={auth:{clientId:CLIENT_ID,authority:'https://login.microsoftonline.com/'+TENANT_ID,redirectUri:window.location.origin+window.location.pathname},cache:{cacheLocation:'sessionStorage'}};
-const msalInstance=new msal.PublicClientApplication(msalConfig);
-let selectedFile=null;
-function showAlert(t,msg){['alertOk','alertErr','alertInfo'].forEach(id=>{const e=document.getElementById(id);e.style.display='none';e.textContent=''});const e=document.getElementById('alert'+t);e.textContent=msg;e.style.display='block'}
-async function login(){try{showAlert('Info','Abriendo ventana de autenticación...');const r=await msalInstance.loginPopup({scopes:SCOPES});setUser(r.account)}catch(e){showAlert('Err','Error: '+(e.message||e))}}
-function setUser(a){document.getElementById('viewLogin').style.display='none';document.getElementById('viewUpload').style.display='block';const n=a.name||a.username;document.getElementById('userInitials').textContent=n.split(' ').map(p=>p[0]).join('').substring(0,2).toUpperCase();document.getElementById('userName').textContent=n;document.getElementById('userEmail').textContent=a.username;showAlert('Ok','Sesión iniciada. Selecciona el archivo Excel.')}
-function logout(){msalInstance.logoutPopup();document.getElementById('viewLogin').style.display='block';document.getElementById('viewUpload').style.display='none';selectedFile=null;document.getElementById('fileName').textContent='';document.getElementById('btnUpload').disabled=true;['alertOk','alertErr','alertInfo'].forEach(id=>document.getElementById(id).style.display='none')}
-function onFileSelected(input){const f=input.files[0];if(!f)return;if(!f.name.match(/\.(xlsx|xls)$/i)){showAlert('Err','Solo archivos Excel .xlsx o .xls');return}selectedFile=f;document.getElementById('fileName').textContent='✓ '+f.name+' ('+(f.size/1024).toFixed(0)+' KB)';document.getElementById('dropZone').classList.add('file-selected');document.getElementById('btnUpload').disabled=false;showAlert('Info','Archivo listo. Clic en Subir para continuar.')}
-const dz=document.getElementById('dropZone');
-dz.addEventListener('dragover',e=>{e.preventDefault();dz.classList.add('drag-over')});
-dz.addEventListener('dragleave',()=>dz.classList.remove('drag-over'));
-dz.addEventListener('drop',e=>{e.preventDefault();dz.classList.remove('drag-over');const f=e.dataTransfer.files[0];if(f){const fi=document.getElementById('fileInput');const dt=new DataTransfer();dt.items.add(f);fi.files=dt.files;onFileSelected(fi)}});
-function setProg(p,l){document.getElementById('progressWrap').style.display='block';document.getElementById('progressFill').style.width=p+'%';document.getElementById('progressPct').textContent=p+'%';document.getElementById('progressLabel').textContent=l}
-async function getToken(){const accounts=msalInstance.getAllAccounts();if(!accounts.length)throw new Error('Sin sesión');const r=await msalInstance.acquireTokenSilent({scopes:SCOPES,account:accounts[0]});return r.accessToken}
-async function upload(){if(!selectedFile){showAlert('Err','Selecciona un archivo.');return}const btn=document.getElementById('btnUpload');btn.disabled=true;btn.textContent='Subiendo...';try{setProg(20,'Obteniendo token...');const token=await getToken();setProg(50,'Subiendo a SharePoint...');const fn=selectedFile.name;const url='https://grcsincelejo.sharepoint.com/sites/BD_DashboardGestion/_api/web/GetFolderByServerRelativeUrl(''+encodeURIComponent(SP_FOLDER)+'')/Files/add(overwrite=true,url=''+encodeURIComponent(fn)+'')';const buf=await selectedFile.arrayBuffer();const r=await fetch(url,{method:'POST',headers:{'Authorization':'Bearer '+token,'Accept':'application/json;odata=verbose','Content-Type':'application/octet-stream'},body:buf});if(r.ok){setProg(100,'Completado');showAlert('Ok','✓ "'+fn+'" subido a SharePoint. El dashboard se actualizará en el próximo ciclo.');btn.textContent='Subir otro';btn.disabled=false;selectedFile=null;document.getElementById('dropZone').classList.remove('file-selected');document.getElementById('fileName').textContent=''}else{throw new Error('Error '+r.status)}}catch(e){document.getElementById('progressWrap').style.display='none';showAlert('Err','Error: '+(e.message||e));btn.textContent='Subir a SharePoint';btn.disabled=false}}
-window.addEventListener('load',async()=>{try{await msalInstance.initialize();const accounts=msalInstance.getAllAccounts();if(accounts.length>0){const r=await msalInstance.acquireTokenSilent({scopes:SCOPES,account:accounts[0]});setUser(accounts[0])}}catch(e){}});
+var TENANT='bc62c75e-1b12-4df8-8cc8-c0a5cb0ca607';
+var CLIENT='2f125b19-5791-4834-9641-61a946a568ff';
+var SP_URL='https://grcsincelejo.sharepoint.com/sites/BD_DashboardGestion';
+var SP_FOLDER='/sites/BD_DashboardGestion/Documentos compartidos/Safety/Jornada laboral';
+var SCOPES=['https://grcsincelejo.sharepoint.com/AllSites.Write'];
+var msal_instance=null, sel_file=null;
+
+function alert_show(t,m){
+  ['alertOk','alertErr','alertInfo'].forEach(function(i){var e=document.getElementById(i);e.style.display='none';e.textContent=''});
+  var e=document.getElementById('alert'+t);e.textContent=m;e.style.display='block';
+}
+function set_user(a){
+  document.getElementById('viewLogin').style.display='none';
+  document.getElementById('viewUpload').style.display='block';
+  var n=a.name||a.username||'Usuario';
+  document.getElementById('userInitials').textContent=n.split(' ').map(function(p){return p[0]}).join('').substring(0,2).toUpperCase();
+  document.getElementById('userName').textContent=n;
+  document.getElementById('userEmail').textContent=a.username;
+  alert_show('Ok','Sesion iniciada. Selecciona el archivo Excel.');
+}
+function set_prog(p,l){
+  document.getElementById('progressWrap').style.display='block';
+  document.getElementById('progressFill').style.width=p+'%';
+  document.getElementById('progressPct').textContent=p+'%';
+  document.getElementById('progressLabel').textContent=l;
+}
+async function do_login(){
+  try{alert_show('Info','Abriendo autenticacion Microsoft...');var r=await msal_instance.loginPopup({scopes:SCOPES});set_user(r.account);}
+  catch(e){alert_show('Err','Error: '+(e.message||String(e)));}
+}
+async function do_logout(){
+  try{await msal_instance.logoutPopup();}catch(e){}
+  document.getElementById('viewLogin').style.display='block';
+  document.getElementById('viewUpload').style.display='none';
+  sel_file=null;document.getElementById('fileName').textContent='';document.getElementById('btnUpload').disabled=true;
+}
+function on_file(f){
+  if(!f)return;
+  if(!f.name.match(/\.(xlsx|xls)$/i)){alert_show('Err','Solo archivos .xlsx o .xls');return;}
+  sel_file=f;
+  document.getElementById('fileName').textContent='✓ '+f.name+' ('+(f.size/1024).toFixed(0)+' KB)';
+  document.getElementById('btnUpload').disabled=false;
+  alert_show('Info','Archivo listo. Clic en Subir para continuar.');
+}
+async function do_upload(){
+  if(!sel_file){alert_show('Err','Selecciona un archivo.');return;}
+  var btn=document.getElementById('btnUpload');btn.disabled=true;btn.textContent='Subiendo...';
+  try{
+    set_prog(20,'Obteniendo token...');
+    var accounts=msal_instance.getAllAccounts();
+    if(!accounts.length)throw new Error('Sin sesion');
+    var tr=await msal_instance.acquireTokenSilent({scopes:SCOPES,account:accounts[0]});
+    var token=tr.accessToken;
+    set_prog(50,'Subiendo a SharePoint...');
+    var fn=sel_file.name;
+    var url=SP_URL+'/_api/web/GetFolderByServerRelativeUrl(''+encodeURIComponent(SP_FOLDER)+'')/Files/add(overwrite=true,url=''+encodeURIComponent(fn)+'')';
+    var buf=await sel_file.arrayBuffer();
+    var res=await fetch(url,{method:'POST',headers:{'Authorization':'Bearer '+token,'Accept':'application/json;odata=verbose','Content-Type':'application/octet-stream'},body:buf});
+    if(res.ok){
+      set_prog(100,'Completado');
+      alert_show('Ok','✓ "'+fn+'" subido a SharePoint correctamente. El dashboard se actualizara en el proximo ciclo.');
+      btn.textContent='Subir otro';btn.disabled=false;sel_file=null;
+      document.getElementById('fileName').textContent='';
+    }else{
+      var et=await res.text();throw new Error('Error '+res.status+': '+et.substring(0,100));
+    }
+  }catch(e){
+    document.getElementById('progressWrap').style.display='none';
+    alert_show('Err','Error: '+(e.message||String(e)));
+    btn.textContent='Subir a SharePoint';btn.disabled=false;
+  }
+}
+window.addEventListener('load',async function(){
+  try{
+    msal_instance=new msal.PublicClientApplication({auth:{clientId:CLIENT,authority:'https://login.microsoftonline.com/'+TENANT,redirectUri:window.location.href.split('?')[0]},cache:{cacheLocation:'sessionStorage'}});
+    await msal_instance.initialize();
+    document.getElementById('btnLogin').addEventListener('click',do_login);
+    document.getElementById('btnLogout').addEventListener('click',do_logout);
+    document.getElementById('btnUpload').addEventListener('click',do_upload);
+    var dz=document.getElementById('dropZone');
+    dz.addEventListener('dragover',function(e){e.preventDefault();dz.classList.add('drag-over');});
+    dz.addEventListener('dragleave',function(){dz.classList.remove('drag-over');});
+    dz.addEventListener('drop',function(e){e.preventDefault();dz.classList.remove('drag-over');var f=e.dataTransfer.files[0];if(f)on_file(f);});
+    document.getElementById('fileInput').addEventListener('change',function(){if(this.files[0])on_file(this.files[0]);});
+    var result=await msal_instance.handleRedirectPromise();
+    if(result&&result.account){set_user(result.account);return;}
+    var accounts=msal_instance.getAllAccounts();
+    if(accounts.length>0){await msal_instance.acquireTokenSilent({scopes:SCOPES,account:accounts[0]});set_user(accounts[0]);}
+  }catch(e){console.log('MSAL:',e.message||e);}
+});
 </script>
 </body>
 </html>
