@@ -1,32 +1,134 @@
 name: Sync SharePoint Dashboard
+
 on:
   schedule:
-    - cron: '0 * * * *'
+    - cron: '0 6,14,20 * * 1-5'
   workflow_dispatch:
+
 jobs:
   sync:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - name: Clonar repositorio
+        uses: actions/checkout@v4
         with:
           token: ${{ secrets.GH_TOKEN }}
-      - uses: actions/setup-python@v5
+
+      - name: Instalar Python 3.11
+        uses: actions/setup-python@v5
         with:
           python-version: '3.11'
-      - run: pip install office365-rest-python-client openpyxl python-dotenv requests
-      - name: Crear .env
+
+      - name: Instalar dependencias
+        run: pip install office365-rest-python-client openpyxl requests python-dotenv
+
+      - name: Sincronizar datos desde SharePoint
+        env:
+          SP_URL: ${{ secrets.SP_URL }}
+          SP_CLIENT_ID: ${{ secrets.SP_CLIENT_ID }}
+          SP_CLIENT_SECRET: ${{ secrets.SP_CLIENT_SECRET }}
+          SP_TENANT_ID: ${{ secrets.SP_TENANT_ID }}
         run: |
-          mkdir -p scripts
-          echo "SP_URL=${{ secrets.SP_URL }}" > scripts/.env
-          echo "SP_CLIENT_ID=${{ secrets.SP_CLIENT_ID }}" >> scripts/.env
-          echo "SP_CLIENT_SECRET=${{ secrets.SP_CLIENT_SECRET }}" >> scripts/.env
-          echo "SP_TENANT_ID=${{ secrets.SP_TENANT_ID }}" >> scripts/.env
-          echo "GITHUB_TOKEN=${{ secrets.GH_TOKEN }}" >> scripts/.env
-          echo "GITHUB_USER=odinprojectapp" >> scripts/.env
-          echo "GITHUB_REPO=dashboard-jornada" >> scripts/.env
-      - run: python scripts/sync_sharepoint.py
-      - name: Push si hay cambios
+          python3 - <<'PYEOF'
+          import os, json, re
+          from datetime import datetime
+          from pathlib import Path
+          from office365.runtime.auth.client_credential import ClientCredential
+          from office365.sharepoint.client_context import ClientContext
+          import openpyxl
+
+          SP_URL = os.environ["SP_URL"]
+          SP_CLIENT_ID = os.environ["SP_CLIENT_ID"]
+          SP_CLIENT_SECRET = os.environ["SP_CLIENT_SECRET"]
+          SP_FOLDER = "/sites/BD_DashboardGestion/Documentos compartidos/Safety/Jornada laboral"
+          LIMITE = 36000
+
+          creds = ClientCredential(SP_CLIENT_ID, SP_CLIENT_SECRET)
+          ctx = ClientContext(SP_URL).with_credentials(creds)
+          ctx.load(ctx.web)
+          ctx.execute_query()
+          print("Conectado:", ctx.web.url)
+
+          folder = ctx.web.get_folder_by_server_relative_url(SP_FOLDER)
+          files = folder.files
+          ctx.load(files)
+          ctx.execute_query()
+          excels = [f for f in files if f.name.endswith((".xlsx", ".xls"))]
+          print(f"Archivos: {len(excels)}")
+
+          def hora_str(v):
+              if v is None: return None
+              if hasattr(v, 'hour'): return f"{v.hour:02d}:{v.minute:02d}"
+              if hasattr(v, 'seconds'): t=int(v.total_seconds()); return f"{t//3600:02d}:{(t%3600)//60:02d}"
+              m = re.search(r'(\d{1,2}):(\d{2})', str(v))
+              return f"{int(m.group(1)):02d}:{int(m.group(2)):02d}" if m else None
+
+          def segs(e, s):
+              if not e or not s: return None
+              eh,em=map(int,e.split(':')); sh,sm=map(int,s.split(':'))
+              d=(sh*3600+sm*60)-(eh*3600+em*60)
+              return d+86400 if d<0 else d
+
+          todos, seen = [], set()
+          for sp_file in excels:
+              print("Procesando:", sp_file.name)
+              p = Path(f"/tmp/{sp_file.name}")
+              with open(p, "wb") as f: sp_file.download(f); ctx.execute_query()
+              wb = openpyxl.load_workbook(p, data_only=True)
+              ws = wb.active
+              hdr = {str(c.value).strip(): i for i,c in enumerate(next(ws.iter_rows(min_row=1,max_row=1)),1) if c.value}
+              ok=0
+              for row in ws.iter_rows(min_row=2, values_only=True):
+                  def g(col): idx=hdr.get(col); return row[idx-1] if idx and idx<=len(row) else None
+                  ent=hora_str(g("Entró")); sal=hora_str(g("Salió_3"))
+                  if not ent or not sal: continue
+                  sg=segs(ent,sal)
+                  if not sg or sg<=0: continue
+                  fr=g("Fecha")
+                  fecha=fr.strftime("%Y-%m-%d") if isinstance(fr,datetime) else (str(fr)[:10] if fr else "")
+                  if not fecha: continue
+                  nom=f"{str(g('Apellidos') or '').strip()} {str(g('Nombres') or '').strip()}".title().strip()
+                  if not nom: continue
+                  key=f"{str(g('Identificador') or '')}_{fecha}"
+                  if key in seen: continue
+                  seen.add(key)
+                  anio=fecha[:4]; mn=int(fecha[5:7])
+                  ms=["","enero","febrero","marzo","abril","mayo","junio","julio","agosto","septiembre","octubre","noviembre","diciembre"]
+                  todos.append({"nombre":nom,"cc":str(g("Identificador") or "").strip(),"cargo":str(g("Cargo") or "").strip().title(),"agencia":str(g("Grupo") or "").strip().upper(),"fecha":fecha,"anio":anio,"mes":f"{ms[mn]} {anio}","entrada":ent,"salida":sal,"segs":sg})
+                  ok+=1
+              print(f"  Validos: {ok}")
+              p.unlink()
+
+          if not todos: print("Sin registros validos"); exit(0)
+          n=len(todos); devs=[r for r in todos if r["segs"]>=LIMITE]
+          avg=round(sum(r["segs"] for r in todos)/n); h,m,s=avg//3600,(avg%3600)//60,avg%60
+          prom=f"{h:02d}:{m:02d}:{s:02d}"; ahora=datetime.now().strftime("%d/%m/%Y %H:%M")
+          rangos={"menor_10h":sum(1 for r in todos if r["segs"]<36000),"de_10_12h":sum(1 for r in todos if 36000<=r["segs"]<43200),"de_12_14h":sum(1 for r in todos if 43200<=r["segs"]<50400),"mayor_14h":sum(1 for r in todos if r["segs"]>=50400)}
+          cm={}
+          for r in todos:
+              if r["cargo"] not in cm: cm[r["cargo"]]={"s":0,"c":0,"d":0}
+              cm[r["cargo"]]["s"]+=r["segs"]; cm[r["cargo"]]["c"]+=1
+              if r["segs"]>=LIMITE: cm[r["cargo"]]["d"]+=1
+          por_cargo=[{"cargo":k,"promedio_segs":round(v["s"]/v["c"]),"total":v["c"],"desviados":v["d"]} for k,v in sorted(cm.items())]
+          am={}
+          for r in todos:
+              if r["agencia"] not in am: am[r["agencia"]]={"s":0,"c":0,"d":0}
+              am[r["agencia"]]["s"]+=r["segs"]; am[r["agencia"]]["c"]+=1
+              if r["segs"]>=LIMITE: am[r["agencia"]]["d"]+=1
+          por_agencia=[{"agencia":k,"promedio_segs":round(v["s"]/v["c"]),"total":v["c"],"desviados":v["d"]} for k,v in sorted(am.items())]
+          fm={}
+          for r in todos:
+              if r["fecha"] not in fm: fm[r["fecha"]]={"s":0,"c":0}
+              fm[r["fecha"]]["s"]+=r["segs"]; fm[r["fecha"]]["c"]+=1
+          tend=[{"fecha":k,"promedio_segs":round(v["s"]/v["c"]),"total":v["c"]} for k,v in sorted(fm.items())]
+          regs=[{k:v for k,v in r.items()} for r in todos]
+          js=f'// Auto-generado {ahora}\nconst ULTIMA_ACTUALIZACION="{ahora}";\nconst LIMITE_SIC_HORAS=10;\nconst RESUMEN={json.dumps({"total":n,"desviados":len(devs),"pct_desviacion":round(len(devs)/n*100,1),"promedio_global":prom,"rangos":rangos,"por_cargo":por_cargo,"por_agencia":por_agencia,"tendencia":tend},ensure_ascii=False)};\nconst REGISTROS={json.dumps(regs,ensure_ascii=False,indent=2)};'
+          Path("data.js").write_text(js,encoding="utf-8")
+          print(f"data.js OK — {n} registros | {len(devs)} desviaciones | Promedio: {prom}")
+          PYEOF
+
+      - name: Commit si hay cambios
         run: |
-          git config user.name "Actions Bot"
-          git config user.email "bot@github.com"
-          git diff --quiet data.js || (git add data.js && git commit -m "Auto-sync $(date +%F)" && git push)
+          git config user.name "GRC Sync Bot"
+          git config user.email "sync@grc.bot"
+          git diff --quiet data.js || (git add data.js && git commit -m "Auto-sync $(date '+%Y-%m-%d %H:%M')" && git push)
