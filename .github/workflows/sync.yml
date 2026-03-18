@@ -45,7 +45,7 @@ jobs:
           CLIENT_SECRET = os.environ["SP_CLIENT_SECRET"]
           SP_HOSTNAME   = "grcsincelejo.sharepoint.com"
           SITE_PATH     = "/sites/BD_DashboardGestion"
-          FOLDER_PATH   = "Documentos compartidos/Safety/Jornada laboral"
+          FOLDER_PATH   = "Safety/Jornada laboral"
           LIMITE        = 36000
 
           # Obtener token via MSAL (client credentials)
