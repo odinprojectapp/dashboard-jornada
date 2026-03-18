@@ -118,16 +118,18 @@ jobs:
               dl.raise_for_status()
               wb = openpyxl.load_workbook(io.BytesIO(dl.content), data_only=True)
               ws = wb.active
-              # Buscar la fila de headers dinamicamente (puede no ser la fila 1)
+              # Buscar headers: imprimir primeras 5 filas para diagnostico y encontrar headers
               hdr = {}
-              header_row = 1
-              for row_idx, row in enumerate(ws.iter_rows(min_row=1, max_row=20, values_only=True), 1):
-                  non_empty = [str(c).strip() for c in row if c is not None and str(c).strip()]
-                  if len(non_empty) >= 3:  # fila con al menos 3 columnas = probable header
-                      hdr = {str(c).strip(): i for i,c in enumerate(row, 1) if c is not None and str(c).strip()}
+              header_row = 2  # Por defecto fila 2 segun indicacion del usuario
+              print(f"  Primeras filas del Excel:")
+              for row_idx, row in enumerate(ws.iter_rows(min_row=1, max_row=6, values_only=True), 1):
+                  non_empty = [str(c).strip() for c in row if c is not None and str(c).strip() != '']
+                  print(f"    Fila {row_idx} ({len(non_empty)} cols): {non_empty[:8]}")
+                  # La fila de headers es la primera con >= 4 columnas no vacias
+                  if len(non_empty) >= 4 and not hdr:
+                      hdr = {str(c).strip(): i for i,c in enumerate(row, 1) if c is not None and str(c).strip() != ''}
                       header_row = row_idx
-                      break
-              print(f"  Headers en fila {header_row}, columnas ({len(hdr)}): {list(hdr.keys())[:10]}")
+              print(f"  Headers detectados en fila {header_row} ({len(hdr)} cols): {list(hdr.keys())}")
               ok = 0
               for row in ws.iter_rows(min_row=header_row+1, values_only=True):
                   def g(col): idx=hdr.get(col); return row[idx-1] if idx and idx<=len(row) else None
