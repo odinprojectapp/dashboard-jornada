@@ -75,9 +75,25 @@ jobs:
           drive_id = drive["id"]
           print("Drive:", drive["name"])
 
-          # Listar archivos en la carpeta
-          folder_enc = FOLDER_PATH.replace(" ", "%20").replace("/", "/")
-          items_r = requests.get(f"{base}/drives/{drive_id}/root:/{folder_enc}:/children", headers=hdrs)
+          # Navegar carpeta por carpeta para evitar 500 con paths con espacios
+          def get_folder_id(drive_id, path_parts):
+              current_id = "root"
+              for part in path_parts:
+                  r = requests.get(f"{base}/drives/{drive_id}/items/{current_id}/children", headers=hdrs)
+                  r.raise_for_status()
+                  children = r.json().get("value", [])
+                  match = next((c for c in children if c["name"].lower() == part.lower()), None)
+                  if not match:
+                      print(f"Carpeta no encontrada: {part}")
+                      print("Carpetas disponibles:", [c["name"] for c in children if c.get("folder")])
+                      exit(1)
+                  current_id = match["id"]
+                  print(f"Carpeta '{part}' -> ID: {current_id[:20]}...")
+              return current_id
+
+          path_parts = [p for p in FOLDER_PATH.split("/") if p]
+          folder_id = get_folder_id(drive_id, path_parts)
+          items_r = requests.get(f"{base}/drives/{drive_id}/items/{folder_id}/children", headers=hdrs)
           items_r.raise_for_status()
           items = items_r.json().get("value", [])
           excels = [i for i in items if i["name"].endswith((".xlsx", ".xls"))]
